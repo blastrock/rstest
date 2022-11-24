@@ -127,13 +127,13 @@ mod should {
     )]
     #[case::more_than_one(
         "fn f(#[future] a: u32, #[future] b: String, #[future] c: std::collection::HashMap<usize, String>) {}",
-        r#"fn f(a: impl std::future::Future<Output = u32>, 
-                b: impl std::future::Future<Output = String>, 
+        r#"fn f(a: impl std::future::Future<Output = u32>,
+                b: impl std::future::Future<Output = String>,
                 c: impl std::future::Future<Output = std::collection::HashMap<usize, String>>) {}"#,
     )]
     #[case::just_one(
         "fn f(a: u32, #[future] b: String) {}",
-        r#"fn f(a: u32, 
+        r#"fn f(a: u32,
                 b: impl std::future::Future<Output = String>) {}"#
     )]
     #[case::generics(

@@ -1,3 +1,5 @@
+mod async_fixture;
+
 use std::path::Path;
 pub use unindent::Unindent;
 

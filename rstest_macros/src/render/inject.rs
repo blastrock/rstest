@@ -7,7 +7,7 @@ use syn::{parse_quote, Expr, FnArg, Ident, Stmt, Type};
 use crate::{
     refident::{MaybeIdent, MaybeType},
     resolver::Resolver,
-    utils::{fn_arg_mutability, IsLiteralExpression},
+    utils::{attr_is, fn_arg_mutability, IsLiteralExpression},
 };
 
 pub(crate) fn resolve_aruments<'a>(
@@ -60,6 +60,13 @@ where
         if fixture.is_literal() && self.type_can_be_get_from_literal_str(arg_type) {
             fixture = Cow::Owned((self.magic_conversion)(fixture, arg_type));
         }
+
+        if let FnArg::Typed(t) = arg {
+            if t.attrs.iter().any(|a| attr_is(a, "future")) {
+                fixture = Cow::Owned(parse_quote! { #fixture .await })
+            }
+        }
+
         Some(parse_quote! {
             #unused_mut
             let #mutability #ident = #fixture;

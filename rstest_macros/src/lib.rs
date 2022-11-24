@@ -314,14 +314,14 @@ pub fn fixture(
     let mut info: FixtureInfo = parse_macro_input!(args as FixtureInfo);
     let mut fixture = parse_macro_input!(input as ItemFn);
 
-    let replace_result = ReplaceFutureAttribute::replace(&mut fixture);
+    //let replace_result = ReplaceFutureAttribute::replace(&mut fixture);
     let extend_result = info.extend_with_function_attrs(&mut fixture);
 
     let mut errors = error::fixture(&fixture, &info);
 
-    if let Err(attrs_errors) = replace_result {
-        attrs_errors.to_tokens(&mut errors);
-    }
+    // if let Err(attrs_errors) = replace_result {
+    //     attrs_errors.to_tokens(&mut errors);
+    // }
     if let Err(attrs_errors) = extend_result {
         attrs_errors.to_tokens(&mut errors);
     }
@@ -476,7 +476,7 @@ pub fn fixture(
 ///
 /// ```
 /// use rstest::rstest;
-///  
+///
 /// fn sum(a: usize, b: usize) -> usize { a + b }
 ///
 /// #[rstest]
@@ -1030,14 +1030,14 @@ pub fn rstest(
     let mut test = parse_macro_input!(input as ItemFn);
     let mut info = parse_macro_input!(args as RsTestInfo);
 
-    let replace_result = ReplaceFutureAttribute::replace(&mut test);
+    //let replace_result = ReplaceFutureAttribute::replace(&mut test);
     let extend_result = info.extend_with_function_attrs(&mut test);
 
     let mut errors = error::rstest(&test, &info);
 
-    if let Err(attrs_errors) = replace_result {
-        attrs_errors.to_tokens(&mut errors);
-    }
+    // if let Err(attrs_errors) = replace_result {
+    //     attrs_errors.to_tokens(&mut errors);
+    // }
     if let Err(attrs_errors) = extend_result {
         attrs_errors.to_tokens(&mut errors);
     }

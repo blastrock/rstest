@@ -1,11 +1,11 @@
 use proc_macro2::{Span, TokenStream};
-use syn::{parse_quote, Ident, ItemFn, ReturnType};
+use syn::{parse_quote, FnArg, Ident, ItemFn, ReturnType};
 
 use quote::quote;
 
 use super::{inject, render_exec_call};
 use crate::resolver::{self, Resolver};
-use crate::utils::{fn_args, fn_args_idents};
+use crate::utils::{attr_is, fn_args, fn_args_idents};
 use crate::{parse::fixture::FixtureInfo, utils::generics_clean_up};
 
 fn wrap_return_type_as_static_ref(rt: ReturnType) -> ReturnType {
@@ -72,6 +72,17 @@ pub(crate) fn render(fixture: ItemFn, info: FixtureInfo) -> TokenStream {
         default_output = wrap_return_type_as_static_ref(default_output);
     }
 
+    let mut fixture = fixture.clone();
+    for arg in fixture.sig.inputs.iter_mut() {
+        if let FnArg::Typed(t) = arg {
+            t.attrs = std::mem::take(&mut t.attrs)
+                .into_iter()
+                .filter(|a| !attr_is(a, "future"))
+                .collect();
+        }
+    }
+    let orig_args = &fixture.sig.inputs;
+
     quote! {
         #[allow(non_camel_case_types)]
         #visibility struct #name {}
@@ -123,7 +134,16 @@ fn render_partial_impl(
     let inject =
         inject::resolve_aruments(fixture.sig.inputs.iter().skip(n), resolver, &genercs_idents);
 
-    let sign_args = fn_args(fixture).take(n);
+    let sign_args = fn_args(fixture).take(n).map(|arg| {
+        let mut arg = arg.clone();
+        if let FnArg::Typed(ref mut t) = arg {
+            t.attrs = std::mem::take(&mut t.attrs)
+                .into_iter()
+                .filter(|a| !attr_is(a, "future"))
+                .collect();
+        }
+        arg
+    });
     let fixture_args = fn_args_idents(fixture).cloned().collect::<Vec<_>>();
     let name = Ident::new(&format!("partial_{}", n), Span::call_site());
 
@@ -229,7 +249,7 @@ mod should {
         let item_fn = parse_str::<ItemFn>(r#"
                 pub fn test<R: AsRef<str>, B>(mut s: String, v: &u32, a: &mut [i32], r: R) -> (u32, B, String, &str)
                             where B: Borrow<u32>
-                    { }    
+                    { }
         "#).unwrap();
         let info = FixtureInfo::default().with_once();
 

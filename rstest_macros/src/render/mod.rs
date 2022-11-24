@@ -260,6 +260,19 @@ fn single_test_case<'a>(
     };
     let execute = render_test_call(testfn_name.clone().into(), &args, timeout, is_async);
 
+    let test_impl = test_impl.map(|test_impl| {
+        let mut test_impl = test_impl.clone();
+        for arg in test_impl.sig.inputs.iter_mut() {
+            if let FnArg::Typed(t) = arg {
+                t.attrs = std::mem::take(&mut t.attrs)
+                    .into_iter()
+                    .filter(|a| !attr_is(a, "future"))
+                    .collect();
+            }
+        }
+        test_impl
+    });
+
     quote! {
         #test_attr
         #(#attrs)*
@@ -431,7 +444,7 @@ mod tests {
     #[case(r#"Some::SomeElse"#, "Some__SomeElse")]
     #[case(r#""minnie".to_owned()"#, "__minnie___to_owned__")]
     #[case(
-        r#"vec![1 ,   2, 
+        r#"vec![1 ,   2,
     3]"#,
         "vec__1_2_3_"
     )]
