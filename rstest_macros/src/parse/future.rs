@@ -1,5 +1,5 @@
 use quote::{format_ident, ToTokens};
-use syn::{parse_quote, visit_mut::VisitMut, FnArg, ItemFn, Lifetime};
+use syn::{parse_quote, visit_mut::VisitMut, FnArg, ItemFn, Lifetime, Signature};
 
 use crate::{error::ErrorsVec, refident::MaybeIdent, utils::attr_is};
 
@@ -22,12 +22,12 @@ fn extend_generics_with_lifetimes<'a, 'b>(
 }
 
 impl ReplaceFutureAttribute {
-    pub(crate) fn replace(item_fn: &mut ItemFn) -> Result<(), ErrorsVec> {
+    pub(crate) fn replace(sig: &mut Signature) -> Result<(), ErrorsVec> {
         let mut visitor = Self::default();
-        visitor.visit_item_fn_mut(item_fn);
+        visitor.visit_signature_mut(sig);
         if !visitor.lifetimes.is_empty() {
-            item_fn.sig.generics = extend_generics_with_lifetimes(
-                item_fn.sig.generics.params.iter(),
+            sig.generics = extend_generics_with_lifetimes(
+                sig.generics.params.iter(),
                 visitor.lifetimes.iter(),
             );
         }
@@ -93,7 +93,40 @@ impl VisitMut for ReplaceFutureAttribute {
 
                 t.ty = parse_quote! {
                     impl std::future::Future<Output = #ty>
+                };
+            }
+            FnArg::Receiver(_) => {}
+        }
+    }
+}
+
+#[derive(Default)]
+pub(crate) struct RemoveFutureAttribute {
+    future_args: Vec<*const FnArg>,
+}
+
+impl RemoveFutureAttribute {
+    pub(crate) fn replace(item_fn: &mut ItemFn) -> Vec<*const FnArg> {
+        Self::replace_sig(&mut item_fn.sig)
+    }
+
+    pub(crate) fn replace_sig(sig: &mut Signature) -> Vec<*const FnArg> {
+        let mut visitor = Self::default();
+        visitor.visit_signature_mut(sig);
+        visitor.future_args
+    }
+}
+
+impl VisitMut for RemoveFutureAttribute {
+    fn visit_fn_arg_mut(&mut self, node: &mut FnArg) {
+        match node {
+            FnArg::Typed(t) => {
+                let futures = extract_arg_attributes(t, |a| attr_is(a, "future"));
+                if futures.is_empty() {
+                    return;
                 }
+
+                self.future_args.push(node as *const FnArg);
             }
             FnArg::Receiver(_) => {}
         }
@@ -115,7 +148,7 @@ mod should {
         let mut item_fn: ItemFn = item_fn.ast();
         let orig = item_fn.clone();
 
-        ReplaceFutureAttribute::replace(&mut item_fn).unwrap();
+        ReplaceFutureAttribute::replace(&mut item_fn.sig).unwrap();
 
         assert_eq!(orig, item_fn)
     }
@@ -127,13 +160,13 @@ mod should {
     )]
     #[case::more_than_one(
         "fn f(#[future] a: u32, #[future] b: String, #[future] c: std::collection::HashMap<usize, String>) {}",
-        r#"fn f(a: impl std::future::Future<Output = u32>, 
-                b: impl std::future::Future<Output = String>, 
+        r#"fn f(a: impl std::future::Future<Output = u32>,
+                b: impl std::future::Future<Output = String>,
                 c: impl std::future::Future<Output = std::collection::HashMap<usize, String>>) {}"#,
     )]
     #[case::just_one(
         "fn f(a: u32, #[future] b: String) {}",
-        r#"fn f(a: u32, 
+        r#"fn f(a: u32,
                 b: impl std::future::Future<Output = String>) {}"#
     )]
     #[case::generics(
@@ -144,7 +177,7 @@ mod should {
         let mut item_fn: ItemFn = item_fn.ast();
         let expected: ItemFn = expected.ast();
 
-        ReplaceFutureAttribute::replace(&mut item_fn).unwrap();
+        ReplaceFutureAttribute::replace(&mut item_fn.sig).unwrap();
 
         assert_eq!(expected, item_fn)
     }
@@ -166,7 +199,7 @@ mod should {
         let mut item_fn: ItemFn = item_fn.ast();
         let expected: ItemFn = expected.ast();
 
-        ReplaceFutureAttribute::replace(&mut item_fn).unwrap();
+        ReplaceFutureAttribute::replace(&mut item_fn.sig).unwrap();
 
         assert_eq!(expected, item_fn)
     }
@@ -178,7 +211,7 @@ mod should {
     fn raise_error(#[case] item_fn: &str, #[case] message: &str) {
         let mut item_fn: ItemFn = item_fn.ast();
 
-        let err = ReplaceFutureAttribute::replace(&mut item_fn).unwrap_err();
+        let err = ReplaceFutureAttribute::replace(&mut item_fn.sig).unwrap_err();
 
         assert_in!(format!("{:?}", err), message);
     }

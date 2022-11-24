@@ -3,7 +3,8 @@ mod test;
 mod wrapper;
 
 use std::collections::HashMap;
-use syn::token::Async;
+use syn::punctuated::Punctuated;
+use syn::token::{Async, Comma};
 
 use proc_macro2::{Span, TokenStream};
 use syn::{parse_quote, Attribute, Expr, FnArg, Ident, ItemFn, Path, ReturnType, Stmt};
@@ -29,9 +30,13 @@ use wrapper::WrapByModule;
 pub(crate) use fixture::render as fixture;
 pub(crate) mod inject;
 
-pub(crate) fn single(mut test: ItemFn, info: RsTestInfo) -> TokenStream {
+pub(crate) fn single(
+    mut test: ItemFn,
+    futures_args: Vec<*const FnArg>,
+    info: RsTestInfo,
+) -> TokenStream {
     let resolver = resolver::fixtures::get(info.data.fixtures());
-    let args = test.sig.inputs.iter().cloned().collect::<Vec<_>>();
+    let args = &test.sig.inputs;
     let attrs = std::mem::take(&mut test.attrs);
     let asyncness = test.sig.asyncness;
     let generic_types = test
@@ -45,7 +50,8 @@ pub(crate) fn single(mut test: ItemFn, info: RsTestInfo) -> TokenStream {
     single_test_case(
         &test.sig.ident,
         &test.sig.ident,
-        &args,
+        args,
+        &futures_args,
         &attrs,
         &test.sig.output,
         asyncness,
@@ -56,7 +62,11 @@ pub(crate) fn single(mut test: ItemFn, info: RsTestInfo) -> TokenStream {
     )
 }
 
-pub(crate) fn parametrize(test: ItemFn, info: RsTestInfo) -> TokenStream {
+pub(crate) fn parametrize(
+    test: ItemFn,
+    futures_args: Vec<*const FnArg>,
+    info: RsTestInfo,
+) -> TokenStream {
     let RsTestInfo { data, attributes } = info;
     let resolver_fixtures = resolver::fixtures::get(data.fixtures());
 
@@ -64,7 +74,7 @@ pub(crate) fn parametrize(test: ItemFn, info: RsTestInfo) -> TokenStream {
         .map(|(name, attrs, resolver)| {
             TestCaseRender::new(name, attrs, (resolver, &resolver_fixtures))
         })
-        .map(|case| case.render(&test, &attributes))
+        .map(|case| case.render(&test, &futures_args, &attributes))
         .collect();
 
     test_group(test, rendered_cases)
@@ -74,6 +84,7 @@ impl ValueList {
     fn render(
         &self,
         test: &ItemFn,
+        futures_args: &[*const FnArg],
         resolver: &dyn Resolver,
         attrs: &[syn::Attribute],
         attributes: &RsTestAttributes,
@@ -82,7 +93,7 @@ impl ValueList {
         let test_cases = self
             .argument_data(resolver)
             .map(|(name, r)| TestCaseRender::new(Ident::new(&name, span), attrs, r))
-            .map(|test_case| test_case.render(test, attributes));
+            .map(|test_case| test_case.render(test, futures_args, attributes));
 
         quote! { #(#test_cases)* }
     }
@@ -108,6 +119,7 @@ impl ValueList {
 
 fn _matrix_recursive<'a>(
     test: &ItemFn,
+    futures_args: &[*const FnArg],
     list_values: &'a [&'a ValueList],
     resolver: &dyn Resolver,
     attrs: &'a [syn::Attribute],
@@ -120,19 +132,30 @@ fn _matrix_recursive<'a>(
     let list_values = &list_values[1..];
 
     if list_values.is_empty() {
-        vlist.render(test, resolver, attrs, attributes)
+        vlist.render(test, futures_args, resolver, attrs, attributes)
     } else {
         let span = test.sig.ident.span();
         let modules = vlist.argument_data(resolver).map(move |(name, resolver)| {
-            _matrix_recursive(test, list_values, &resolver, attrs, attributes)
-                .wrap_by_mod(&Ident::new(&name, span))
+            _matrix_recursive(
+                test,
+                futures_args,
+                list_values,
+                &resolver,
+                attrs,
+                attributes,
+            )
+            .wrap_by_mod(&Ident::new(&name, span))
         });
 
         quote! { #(#modules)* }
     }
 }
 
-pub(crate) fn matrix(test: ItemFn, info: RsTestInfo) -> TokenStream {
+pub(crate) fn matrix(
+    test: ItemFn,
+    futures_args: Vec<*const FnArg>,
+    info: RsTestInfo,
+) -> TokenStream {
     let RsTestInfo {
         data, attributes, ..
     } = info;
@@ -143,7 +166,14 @@ pub(crate) fn matrix(test: ItemFn, info: RsTestInfo) -> TokenStream {
     let resolver = resolver::fixtures::get(data.fixtures());
     let rendered_cases = if cases.is_empty() {
         let list_values = data.list_values().collect::<Vec<_>>();
-        _matrix_recursive(&test, &list_values, &resolver, &[], &attributes)
+        _matrix_recursive(
+            &test,
+            &futures_args,
+            &list_values,
+            &resolver,
+            &[],
+            &attributes,
+        )
     } else {
         cases
             .into_iter()
@@ -151,6 +181,7 @@ pub(crate) fn matrix(test: ItemFn, info: RsTestInfo) -> TokenStream {
                 let list_values = data.list_values().collect::<Vec<_>>();
                 _matrix_recursive(
                     &test,
+                    &futures_args,
                     &list_values,
                     &(case_resolver, &resolver),
                     attrs,
@@ -217,7 +248,8 @@ fn render_test_call(
 fn single_test_case<'a>(
     name: &Ident,
     testfn_name: &Ident,
-    args: &[FnArg],
+    args: &Punctuated<FnArg, Comma>,
+    future_args: &[*const FnArg],
     attrs: &[Attribute],
     output: &ReturnType,
     asyncness: Option<Async>,
@@ -232,7 +264,7 @@ fn single_test_case<'a>(
     if !trace_me.is_empty() {
         attributes.add_trace(format_ident!("trace"));
     }
-    let inject = inject::resolve_aruments(args.iter(), &resolver, generic_types);
+    let inject = inject::resolve_aruments(args.iter(), &resolver, generic_types, future_args);
     let args = args
         .iter()
         .filter_map(MaybeIdent::maybe_ident)
@@ -259,6 +291,19 @@ fn single_test_case<'a>(
         Some(resolve_default_test_attr(is_async))
     };
     let execute = render_test_call(testfn_name.clone().into(), &args, timeout, is_async);
+
+    let test_impl = test_impl.map(|test_impl| {
+        let mut test_impl = test_impl.clone();
+        for arg in test_impl.sig.inputs.iter_mut() {
+            if let FnArg::Typed(t) = arg {
+                t.attrs = std::mem::take(&mut t.attrs)
+                    .into_iter()
+                    .filter(|a| !attr_is(a, "future"))
+                    .collect();
+            }
+        }
+        test_impl
+    });
 
     quote! {
         #test_attr
@@ -311,8 +356,13 @@ impl<'a> TestCaseRender<'a> {
         }
     }
 
-    fn render(self, testfn: &ItemFn, attributes: &RsTestAttributes) -> TokenStream {
-        let args = testfn.sig.inputs.iter().cloned().collect::<Vec<_>>();
+    fn render(
+        self,
+        testfn: &ItemFn,
+        futures_args: &[*const FnArg],
+        attributes: &RsTestAttributes,
+    ) -> TokenStream {
+        let args = &testfn.sig.inputs;
         let mut attrs = testfn.attrs.clone();
         attrs.extend(self.attrs.iter().cloned());
         let asyncness = testfn.sig.asyncness;
@@ -327,7 +377,8 @@ impl<'a> TestCaseRender<'a> {
         single_test_case(
             &self.name,
             &testfn.sig.ident,
-            &args,
+            args,
+            futures_args,
             &attrs,
             &testfn.sig.output,
             asyncness,
@@ -431,7 +482,7 @@ mod tests {
     #[case(r#"Some::SomeElse"#, "Some__SomeElse")]
     #[case(r#""minnie".to_owned()"#, "__minnie___to_owned__")]
     #[case(
-        r#"vec![1 ,   2, 
+        r#"vec![1 ,   2,
     3]"#,
         "vec__1_2_3_"
     )]

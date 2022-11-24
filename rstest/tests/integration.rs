@@ -1,7 +1,7 @@
 use rstest_test::{sanitize_name, testname, Project};
 
 /// Rstest integration tests
-mod rstest;
+//mod rstest;
 
 /// Fixture's integration tests
 mod fixture;

@@ -18,7 +18,7 @@ mod utils;
 use syn::{parse_macro_input, ItemFn};
 
 use crate::parse::{fixture::FixtureInfo, future::ReplaceFutureAttribute, rstest::RsTestInfo};
-use parse::ExtendWithFunctionAttrs;
+use parse::{future::RemoveFutureAttribute, ExtendWithFunctionAttrs};
 use quote::ToTokens;
 
 /// Define a fixture that you can use in all `rstest`'s test arguments. You should just mark your
@@ -314,20 +314,22 @@ pub fn fixture(
     let mut info: FixtureInfo = parse_macro_input!(args as FixtureInfo);
     let mut fixture = parse_macro_input!(input as ItemFn);
 
-    let replace_result = ReplaceFutureAttribute::replace(&mut fixture);
     let extend_result = info.extend_with_function_attrs(&mut fixture);
+    let mut sig_with_future_impls = fixture.sig.clone();
+    let replace_result = ReplaceFutureAttribute::replace(&mut sig_with_future_impls);
+    let futures_args = RemoveFutureAttribute::replace(&mut fixture);
 
     let mut errors = error::fixture(&fixture, &info);
 
-    if let Err(attrs_errors) = replace_result {
+    if let Err(attrs_errors) = extend_result {
         attrs_errors.to_tokens(&mut errors);
     }
-    if let Err(attrs_errors) = extend_result {
+    if let Err(attrs_errors) = replace_result {
         attrs_errors.to_tokens(&mut errors);
     }
 
     if errors.is_empty() {
-        render::fixture(fixture, info)
+        render::fixture(fixture, sig_with_future_impls, futures_args, info)
     } else {
         errors
     }
@@ -476,7 +478,7 @@ pub fn fixture(
 ///
 /// ```
 /// use rstest::rstest;
-///  
+///
 /// fn sum(a: usize, b: usize) -> usize { a + b }
 ///
 /// #[rstest]
@@ -1030,8 +1032,10 @@ pub fn rstest(
     let mut test = parse_macro_input!(input as ItemFn);
     let mut info = parse_macro_input!(args as RsTestInfo);
 
-    let replace_result = ReplaceFutureAttribute::replace(&mut test);
     let extend_result = info.extend_with_function_attrs(&mut test);
+    let mut sig_with_future_impls = test.sig.clone();
+    let replace_result = ReplaceFutureAttribute::replace(&mut sig_with_future_impls);
+    let futures_args = RemoveFutureAttribute::replace(&mut test);
 
     let mut errors = error::rstest(&test, &info);
 
@@ -1044,11 +1048,11 @@ pub fn rstest(
 
     if errors.is_empty() {
         if info.data.has_list_values() {
-            render::matrix(test, info)
+            render::matrix(test, futures_args, info)
         } else if info.data.has_cases() {
-            render::parametrize(test, info)
+            render::parametrize(test, futures_args, info)
         } else {
-            render::single(test, info)
+            render::single(test, futures_args, info)
         }
     } else {
         errors
