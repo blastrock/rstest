@@ -44,7 +44,7 @@ mod single_test_should {
     fn add_return_type_if_any() {
         let input_fn: ItemFn = "fn function(fix: String) -> Result<i32, String> { Ok(42) }".ast();
 
-        let result: ItemFn = single(input_fn.clone(), Default::default()).ast();
+        let result: ItemFn = single(input_fn.clone(), vec![], Default::default()).ast();
 
         assert_eq!(result.sig.output, input_fn.sig.output);
     }
@@ -60,7 +60,7 @@ mod single_test_should {
                 }
                 "#.ast();
 
-        let result: ItemFn = single(input_fn.clone(), Default::default()).ast();
+        let result: ItemFn = single(input_fn.clone(), vec![], Default::default()).ast();
         let first_stmt = result.block.stmts.get(0).unwrap();
 
         let inner_fn: ItemFn = parse_quote! {
@@ -85,7 +85,7 @@ mod single_test_should {
         let mut input_fn: ItemFn = r#"pub fn test(_s: String){}"#.ast();
         input_fn.attrs = attributes;
 
-        let result: ItemFn = single(input_fn.clone(), Default::default()).ast();
+        let result: ItemFn = single(input_fn.clone(), vec![], Default::default()).ast();
         let first_stmt = result.block.stmts.get(0).unwrap();
 
         let inner_fn: ItemFn = parse_quote! {
@@ -115,7 +115,7 @@ mod single_test_should {
         input_fn.set_async(is_async);
         input_fn.attrs = attributes.clone();
 
-        let result: ItemFn = single(input_fn.clone(), Default::default()).ast();
+        let result: ItemFn = single(input_fn.clone(), vec![], Default::default()).ast();
 
         assert_eq!(result.attrs, attributes);
     }
@@ -124,7 +124,7 @@ mod single_test_should {
     fn trace_arguments_values() {
         let input_fn: ItemFn = r#"#[trace]fn test(s: String, a:i32) {} "#.ast();
 
-        let item_fn: ItemFn = single(input_fn.clone(), Default::default()).ast();
+        let item_fn: ItemFn = single(input_fn.clone(), vec![], Default::default()).ast();
 
         assert_in!(
             item_fn.block.display_code(),
@@ -147,6 +147,7 @@ mod single_test_should {
 
         let item_fn: ItemFn = single(
             input_fn.clone(),
+            vec![],
             RsTestInfo {
                 attributes,
                 ..Default::default()
@@ -191,7 +192,7 @@ mod single_test_should {
         let mut input_fn: ItemFn = format!(r#"{} fn test(_s: String) {{}} "#, prefix).ast();
         input_fn.attrs = attributes.clone();
 
-        let result: ItemFn = single(input_fn.clone(), Default::default()).ast();
+        let result: ItemFn = single(input_fn.clone(), vec![], Default::default()).ast();
 
         assert_eq!(result.attrs[0], test_attribute);
         assert_eq!(&result.attrs[1..], attributes.as_slice());
@@ -204,7 +205,7 @@ mod single_test_should {
         let mut input_fn: ItemFn = r#"fn test(_s: String) {} "#.ast();
         input_fn.set_async(is_async);
 
-        let result: ItemFn = single(input_fn.clone(), Default::default()).ast();
+        let result: ItemFn = single(input_fn.clone(), vec![], Default::default()).ast();
 
         let last_stmt = result.block.stmts.last().unwrap();
 
@@ -467,7 +468,7 @@ mod cases_should {
         let (item_fn, info) =
             TestCaseBuilder::from("fn should_be_the_module_name(mut fix: String) {}").take();
 
-        let tokens = parametrize(item_fn, info);
+        let tokens = parametrize(item_fn, vec![], info);
 
         let output = TestsGroup::from(tokens);
 
@@ -481,7 +482,7 @@ mod cases_should {
         )
         .take();
 
-        let tokens = parametrize(item_fn.clone(), info);
+        let tokens = parametrize(item_fn.clone(), vec![], info);
 
         let mut output = TestsGroup::from(tokens);
 
@@ -496,7 +497,7 @@ mod cases_should {
         )
         .take();
 
-        let tokens = parametrize(item_fn.clone(), info);
+        let tokens = parametrize(item_fn.clone(), vec![], info);
 
         let output = TestsGroup::from(tokens);
 
@@ -510,7 +511,7 @@ mod cases_should {
                 .push_case(r#"String::from("3")"#)
                 .take();
 
-        let tokens = parametrize(item_fn.clone(), info);
+        let tokens = parametrize(item_fn.clone(), vec![], info);
 
         let tests = TestsGroup::from(tokens).get_all_tests();
 
@@ -537,7 +538,7 @@ mod cases_should {
 
         item_fn.attrs = given_attrs.clone();
 
-        let tokens = parametrize(item_fn, info);
+        let tokens = parametrize(item_fn, vec![], info);
 
         let test_attrs = &TestsGroup::from(tokens).get_all_tests()[0].attrs[1..];
 
@@ -553,7 +554,7 @@ mod cases_should {
             r#"fn should_be_the_module_name(mut fix: String) { println!("user code") }"#,
         )
         .take();
-        let tokens = parametrize(item_fn, info);
+        let tokens = parametrize(item_fn, vec![], info);
 
         let output = TestsGroup::from(tokens);
 
@@ -569,7 +570,7 @@ mod cases_should {
             r#"fn should_be_the_module_name(mut fix: String) { println!("user code") }"#,
         )
         .take();
-        let tokens = parametrize(item_fn, info);
+        let tokens = parametrize(item_fn, vec![], info);
 
         let output = TestsGroup::from(tokens);
 
@@ -580,7 +581,7 @@ mod cases_should {
     fn add_a_test_case() {
         let (item_fn, info) = one_simple_case();
 
-        let tokens = parametrize(item_fn, info);
+        let tokens = parametrize(item_fn, vec![], info);
 
         let tests = TestsGroup::from(tokens).get_all_tests();
 
@@ -595,7 +596,7 @@ mod cases_should {
                 .push_case(r#"String::from("3")"#)
                 .take();
 
-        let tokens = parametrize(item_fn.clone(), info);
+        let tokens = parametrize(item_fn.clone(), vec![], info);
 
         let tests = TestsGroup::from(tokens).get_all_tests();
 
@@ -612,7 +613,7 @@ mod cases_should {
         .push_case(r#"String::from("3")"#)
         .take();
 
-        let tokens = parametrize(item_fn, info);
+        let tokens = parametrize(item_fn, vec![], info);
 
         let test = &TestsGroup::from(tokens).get_all_tests()[0];
         let inner_functions = extract_inner_functions(&test.block);
@@ -624,7 +625,7 @@ mod cases_should {
     fn starts_case_number_from_1() {
         let (item_fn, info) = one_simple_case();
 
-        let tokens = parametrize(item_fn.clone(), info);
+        let tokens = parametrize(item_fn.clone(), vec![], info);
 
         let tests = TestsGroup::from(tokens).get_all_tests();
 
@@ -639,7 +640,7 @@ mod cases_should {
     fn add_all_test_cases() {
         let (item_fn, info) = some_simple_cases(5);
 
-        let tokens = parametrize(item_fn.clone(), info);
+        let tokens = parametrize(item_fn.clone(), vec![], info);
 
         let tests = TestsGroup::from(tokens).get_all_tests();
 
@@ -653,7 +654,7 @@ mod cases_should {
     fn left_pad_case_number_by_zeros() {
         let (item_fn, info) = some_simple_cases(1000);
 
-        let tokens = parametrize(item_fn.clone(), info);
+        let tokens = parametrize(item_fn.clone(), vec![], info);
 
         let tests = TestsGroup::from(tokens).get_all_tests();
 
@@ -688,7 +689,7 @@ mod cases_should {
             panic!("Test case should be the second one");
         }
 
-        let tokens = parametrize(item_fn.clone(), info);
+        let tokens = parametrize(item_fn.clone(), vec![], info);
 
         let tests = TestsGroup::from(tokens).get_all_tests();
 
@@ -722,7 +723,7 @@ mod cases_should {
         item_fn.attrs = attributes.clone();
         item_fn.set_async(is_async);
 
-        let tokens = parametrize(item_fn.clone(), info);
+        let tokens = parametrize(item_fn.clone(), vec![], info);
 
         let test = &TestsGroup::from(tokens).get_all_tests()[0];
 
@@ -753,7 +754,7 @@ mod cases_should {
         .take();
         item_fn.attrs = attributes.clone();
 
-        let tokens = parametrize(item_fn, info);
+        let tokens = parametrize(item_fn, vec![], info);
 
         let tests = TestsGroup::from(tokens).get_all_tests();
 
@@ -771,7 +772,7 @@ mod cases_should {
                 .push_case(r#"String::from("3")"#)
                 .take();
 
-        let tokens = parametrize(item_fn, info);
+        let tokens = parametrize(item_fn, vec![], info);
 
         let tests = TestsGroup::from(tokens).get_all_tests();
 
@@ -788,7 +789,7 @@ mod cases_should {
                 .push_case(TestCase::from_iter(vec!["3", "4"]))
                 .take();
 
-        let tokens = parametrize(item_fn, info);
+        let tokens = parametrize(item_fn, vec![], info);
 
         let tests = TestsGroup::from(tokens).get_all_tests();
 
@@ -809,7 +810,7 @@ mod cases_should {
                 .add_notrace(to_idents!(["b_no_trace_me", "c_no_trace_me"]))
                 .take();
 
-        let tokens = parametrize(item_fn, info);
+        let tokens = parametrize(item_fn, vec![], info);
 
         let tests = TestsGroup::from(tokens).get_all_tests();
 
@@ -839,7 +840,7 @@ mod cases_should {
                 .add_notrace(to_idents!(["a_no_trace_me"]))
                 .take();
 
-        let tokens = parametrize(item_fn, info);
+        let tokens = parametrize(item_fn, vec![], info);
 
         let tests = TestsGroup::from(tokens).get_all_tests();
 
@@ -887,7 +888,7 @@ mod matrix_cases_should {
         let item_fn = "fn should_be_the_module_name(mut fix: String) {}".ast();
         let data = into_rstest_data(&item_fn);
 
-        let tokens = matrix(item_fn.clone(), data.into());
+        let tokens = matrix(item_fn.clone(), vec![], data.into());
 
         let output = TestsGroup::from(tokens);
 
@@ -900,7 +901,7 @@ mod matrix_cases_should {
             r#"fn should_be_the_module_name(mut fix: String) { println!("user code") }"#.ast();
         let data = into_rstest_data(&item_fn);
 
-        let tokens = matrix(item_fn.clone(), data.into());
+        let tokens = matrix(item_fn.clone(), vec![], data.into());
 
         let mut output = TestsGroup::from(tokens);
 
@@ -923,7 +924,7 @@ mod matrix_cases_should {
             ..Default::default()
         };
 
-        let tokens = matrix(item_fn, info);
+        let tokens = matrix(item_fn, vec![], info);
 
         let test = &TestsGroup::from(tokens).get_all_tests()[0];
         let inner_functions = extract_inner_functions(&test.block);
@@ -943,7 +944,7 @@ mod matrix_cases_should {
             ..Default::default()
         };
 
-        let tokens = matrix(item_fn, info);
+        let tokens = matrix(item_fn, vec![], info);
 
         let output = TestsGroup::from(tokens);
 
@@ -960,7 +961,7 @@ mod matrix_cases_should {
             },
             ..Default::default()
         };
-        let tokens = matrix(item_fn.clone(), info);
+        let tokens = matrix(item_fn.clone(), vec![], info);
 
         let tests = TestsGroup::from(tokens).get_all_tests();
 
@@ -982,7 +983,7 @@ mod matrix_cases_should {
             ..Default::default()
         };
 
-        let tokens = matrix(item_fn.clone(), info);
+        let tokens = matrix(item_fn.clone(), vec![], info);
 
         let tests = TestsGroup::from(tokens).get_tests();
 
@@ -997,7 +998,7 @@ mod matrix_cases_should {
             r#"fn should_be_the_module_name(mut fix: String) { println!("user code") }"#.ast();
         let data = into_rstest_data(&item_fn);
 
-        let tokens = matrix(item_fn.clone(), data.into());
+        let tokens = matrix(item_fn.clone(), vec![], data.into());
 
         let output = TestsGroup::from(tokens);
 
@@ -1017,7 +1018,7 @@ mod matrix_cases_should {
             r#"fn should_be_the_module_name(mut fix: String) { println!("user code") }"#.ast();
         let data = into_rstest_data(&item_fn);
 
-        let tokens = matrix(item_fn.clone(), data.into());
+        let tokens = matrix(item_fn.clone(), vec![], data.into());
 
         let output = TestsGroup::from(tokens);
 
@@ -1043,7 +1044,7 @@ mod matrix_cases_should {
 
         let item_fn = format!(r#"fn test({}: u32) {{ println!("user code") }}"#, arg_name).ast();
 
-        let tokens = matrix(item_fn, info);
+        let tokens = matrix(item_fn, vec![], info);
 
         let tests = TestsGroup::from(tokens).get_tests();
 
@@ -1074,7 +1075,7 @@ mod matrix_cases_should {
         item_fn.set_async(is_async);
         item_fn.attrs = attributes.clone();
 
-        let tokens = matrix(item_fn, data.into());
+        let tokens = matrix(item_fn, vec![], data.into());
 
         let tests = TestsGroup::from(tokens).get_all_tests();
 
@@ -1110,7 +1111,7 @@ mod matrix_cases_should {
         item_fn.set_async(is_async);
         item_fn.attrs = attributes.clone();
 
-        let tokens = matrix(item_fn, data.into());
+        let tokens = matrix(item_fn, vec![], data.into());
 
         let tests = TestsGroup::from(tokens).get_all_tests();
 
@@ -1134,7 +1135,7 @@ mod matrix_cases_should {
         let mut item_fn: ItemFn = r#"fn test(v: u32) {{ println!("user code") }}"#.ast();
         item_fn.set_async(is_async);
 
-        let tokens = matrix(item_fn, data.into());
+        let tokens = matrix(item_fn, vec![], data.into());
 
         let tests = TestsGroup::from(tokens).get_all_tests();
 
@@ -1158,7 +1159,7 @@ mod matrix_cases_should {
         };
         let item_fn: ItemFn = r#"#[trace] fn test(a_trace_me: u32, b_trace_me: u32) {}"#.ast();
 
-        let tokens = matrix(item_fn, data.into());
+        let tokens = matrix(item_fn, vec![], data.into());
 
         let tests = TestsGroup::from(tokens).get_all_tests();
 
@@ -1185,7 +1186,7 @@ mod matrix_cases_should {
         attributes.add_notraces(vec![ident("b_no_trace_me"), ident("c_no_trace_me")]);
         let item_fn: ItemFn = r#"#[trace] fn test(a_trace_me: u32, b_no_trace_me: u32, c_no_trace_me: u32, d_trace_me: u32) {}"#.ast();
 
-        let tokens = matrix(item_fn, RsTestInfo { data, attributes });
+        let tokens = matrix(item_fn, vec![], RsTestInfo { data, attributes });
 
         let tests = TestsGroup::from(tokens).get_all_tests();
 
@@ -1236,7 +1237,7 @@ mod matrix_cases_should {
         fn contain_a_module_for_each_first_arg() {
             let (names, item_fn, info) = fixture();
 
-            let tokens = matrix(item_fn, info);
+            let tokens = matrix(item_fn, vec![], info);
 
             let modules = TestsGroup::from(tokens).module.get_modules().names();
 
@@ -1254,7 +1255,7 @@ mod matrix_cases_should {
         fn create_all_tests() {
             let (_, item_fn, info) = fixture();
 
-            let tokens = matrix(item_fn, info);
+            let tokens = matrix(item_fn, vec![], info);
 
             let tests = TestsGroup::from(tokens).module.get_all_tests().names();
 
@@ -1265,7 +1266,7 @@ mod matrix_cases_should {
         fn create_all_modules_with_the_same_functions() {
             let (_, item_fn, info) = fixture();
 
-            let tokens = matrix(item_fn, info);
+            let tokens = matrix(item_fn, vec![], info);
 
             let tests = TestsGroup::from(tokens)
                 .module
@@ -1282,7 +1283,7 @@ mod matrix_cases_should {
         fn test_name_should_contain_argument_name() {
             let (names, item_fn, info) = fixture();
 
-            let tokens = matrix(item_fn, info);
+            let tokens = matrix(item_fn, vec![], info);
 
             let tests = TestsGroup::from(tokens).module.get_modules()[0]
                 .get_tests()
@@ -1318,7 +1319,7 @@ mod matrix_cases_should {
         )
         .ast();
 
-        let tokens = matrix(item_fn, info);
+        let tokens = matrix(item_fn, vec![], info);
 
         let tg = TestsGroup::from(tokens);
 
@@ -1356,7 +1357,7 @@ mod matrix_cases_should {
             ..Default::default()
         };
 
-        let tokens = matrix(item_fn.clone(), info);
+        let tokens = matrix(item_fn.clone(), vec![], info);
 
         let tg = TestsGroup::from(tokens);
 
@@ -1411,7 +1412,7 @@ mod complete_should {
             ],
         };
 
-        matrix(item_fn.clone(), data.into()).into()
+        matrix(item_fn.clone(), vec![], data.into()).into()
     }
 
     fn test_case() -> TestsGroup {

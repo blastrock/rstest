@@ -1,9 +1,10 @@
 use proc_macro2::{Span, TokenStream};
-use syn::{parse_quote, Ident, ItemFn, ReturnType};
+use syn::{parse_quote, FnArg, Ident, ItemFn, ReturnType, Signature};
 
 use quote::quote;
 
 use super::{inject, render_exec_call};
+use crate::refident::MaybeIdent;
 use crate::resolver::{self, Resolver};
 use crate::utils::{fn_args, fn_args_idents};
 use crate::{parse::fixture::FixtureInfo, utils::generics_clean_up};
@@ -32,12 +33,17 @@ fn wrap_call_impl_with_call_once_impl(call_impl: TokenStream, rt: &ReturnType) -
     }
 }
 
-pub(crate) fn render(fixture: ItemFn, info: FixtureInfo) -> TokenStream {
+pub(crate) fn render(
+    fixture: ItemFn,
+    sig_with_future_impls: Signature,
+    await_args: Vec<*const FnArg>,
+    info: FixtureInfo,
+) -> TokenStream {
     let name = &fixture.sig.ident;
     let asyncness = &fixture.sig.asyncness.clone();
     let vargs = fn_args_idents(&fixture).cloned().collect::<Vec<_>>();
     let args = &vargs;
-    let orig_args = &fixture.sig.inputs;
+    let orig_args = &sig_with_future_impls.inputs;
     let orig_attrs = &fixture.attrs;
     let generics = &fixture.sig.generics;
     let mut default_output = info
@@ -59,9 +65,11 @@ pub(crate) fn render(fixture: ItemFn, info: FixtureInfo) -> TokenStream {
         .map(|tp| &tp.ident)
         .cloned()
         .collect::<Vec<_>>();
-    let inject = inject::resolve_aruments(fixture.sig.inputs.iter(), &resolver, &generics_idents);
-    let partials =
-        (1..=orig_args.len()).map(|n| render_partial_impl(&fixture, n, &resolver, &info));
+    // Don't await futures in this inject, we will await them in the get() function
+    let inject =
+        inject::resolve_aruments(fixture.sig.inputs.iter(), &resolver, &generics_idents, &[]);
+    let partials = (1..=orig_args.len())
+        .map(|n| render_partial_impl(&fixture, &sig_with_future_impls, n, &resolver, &info));
 
     let call_get = render_exec_call(parse_quote! { Self::get }, args, asyncness.is_some());
     let mut call_impl = render_exec_call(parse_quote! { #name }, args, asyncness.is_some());
@@ -72,6 +80,20 @@ pub(crate) fn render(fixture: ItemFn, info: FixtureInfo) -> TokenStream {
         default_output = wrap_return_type_as_static_ref(default_output);
     }
 
+    let awaits = fixture
+        .sig
+        .inputs
+        .iter()
+        .filter(|a| await_args.contains(&(*a as *const FnArg)))
+        .map(|a| {
+            let ident = a
+                .maybe_ident()
+                .expect("Found a future argument without ident");
+            quote! {
+                let #ident = #ident.await;
+            }
+        });
+
     quote! {
         #[allow(non_camel_case_types)]
         #visibility struct #name {}
@@ -80,6 +102,7 @@ pub(crate) fn render(fixture: ItemFn, info: FixtureInfo) -> TokenStream {
             #(#orig_attrs)*
             #[allow(unused_mut)]
             #asyncness fn get #generics (#orig_args) #output #where_clause {
+                #(#awaits)*
                 #call_impl
             }
 
@@ -98,6 +121,7 @@ pub(crate) fn render(fixture: ItemFn, info: FixtureInfo) -> TokenStream {
 
 fn render_partial_impl(
     fixture: &ItemFn,
+    sig_with_future_impls: &Signature,
     n: usize,
     resolver: &impl Resolver,
     info: &FixtureInfo,
@@ -105,25 +129,34 @@ fn render_partial_impl(
     let mut output = info
         .attributes
         .extract_partial_type(n)
-        .unwrap_or_else(|| fixture.sig.output.clone());
+        .unwrap_or_else(|| sig_with_future_impls.output.clone());
 
     if info.attributes.is_once() {
         output = wrap_return_type_as_static_ref(output);
     }
 
-    let generics = generics_clean_up(&fixture.sig.generics, fn_args(fixture).take(n), &output);
+    let generics = generics_clean_up(
+        &sig_with_future_impls.generics,
+        fn_args(fixture).take(n),
+        &output,
+    );
     let where_clause = &generics.where_clause;
-    let asyncness = &fixture.sig.asyncness;
+    let asyncness = &sig_with_future_impls.asyncness;
 
     let genercs_idents = generics
         .type_params()
         .map(|tp| &tp.ident)
         .cloned()
         .collect::<Vec<_>>();
-    let inject =
-        inject::resolve_aruments(fixture.sig.inputs.iter().skip(n), resolver, &genercs_idents);
+    // Don't await futures in this inject, we will await them in the get() function
+    let inject = inject::resolve_aruments(
+        sig_with_future_impls.inputs.iter().skip(n),
+        resolver,
+        &genercs_idents,
+        &[],
+    );
 
-    let sign_args = fn_args(fixture).take(n);
+    let sign_args = sig_with_future_impls.inputs.iter().take(n);
     let fixture_args = fn_args_idents(fixture).cloned().collect::<Vec<_>>();
     let name = Ident::new(&format!("partial_{}", n), Span::call_site());
 
@@ -175,7 +208,12 @@ mod should {
     fn parse_fixture<S: AsRef<str>>(code: S) -> (ItemFn, FixtureOutput) {
         let item_fn = parse_str::<ItemFn>(code.as_ref()).unwrap();
 
-        let tokens = render(item_fn.clone(), Default::default());
+        let tokens = render(
+            item_fn.clone(),
+            item_fn.sig.clone(),
+            vec![],
+            Default::default(),
+        );
         (item_fn, parse2(tokens).unwrap())
     }
 
@@ -229,11 +267,12 @@ mod should {
         let item_fn = parse_str::<ItemFn>(r#"
                 pub fn test<R: AsRef<str>, B>(mut s: String, v: &u32, a: &mut [i32], r: R) -> (u32, B, String, &str)
                             where B: Borrow<u32>
-                    { }    
+                    { }
         "#).unwrap();
         let info = FixtureInfo::default().with_once();
 
-        let out: FixtureOutput = parse2(render(item_fn.clone(), info)).unwrap();
+        let out: FixtureOutput =
+            parse2(render(item_fn.clone(), item_fn.sig.clone(), vec![], info)).unwrap();
 
         let signature = select_method(out.core_impl, "get").unwrap().sig;
 
@@ -334,6 +373,8 @@ mod should {
 
         let tokens = render(
             item_fn.clone(),
+            item_fn.sig.clone(),
+            vec![],
             FixtureInfo {
                 attributes: Attributes {
                     attributes: vec![Attribute::Type(
@@ -458,6 +499,8 @@ mod should {
 
         let tokens = render(
             item_fn.clone(),
+            item_fn.sig.clone(),
+            vec![],
             FixtureInfo {
                 attributes: Attributes {
                     attributes: vec![Attribute::Type(
@@ -482,5 +525,10 @@ mod should {
         let partial = select_method(out.core_impl, "partial_1").unwrap();
 
         assert_eq!(expected.sig, partial.sig);
+    }
+
+    #[rstest]
+    fn todo_test_future_args() {
+        todo!();
     }
 }

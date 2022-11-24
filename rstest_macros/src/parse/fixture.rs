@@ -449,8 +449,8 @@ mod extend {
         fn rename_with_attributes() {
             let mut item_fn = r#"
                     fn test_fn(
-                        #[from(long_fixture_name)] 
-                        #[with(42, "other")] short: u32, 
+                        #[from(long_fixture_name)]
+                        #[with(42, "other")] short: u32,
                         #[from(simple)]
                         s: &str,
                         no_change: i32) {
