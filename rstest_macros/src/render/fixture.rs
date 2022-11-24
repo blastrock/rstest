@@ -36,7 +36,7 @@ fn wrap_call_impl_with_call_once_impl(call_impl: TokenStream, rt: &ReturnType) -
 pub(crate) fn render(
     fixture: ItemFn,
     sig_with_future_impls: Signature,
-    futures_args: Vec<*const FnArg>,
+    await_args: Vec<*const FnArg>,
     info: FixtureInfo,
 ) -> TokenStream {
     let name = &fixture.sig.ident;
@@ -84,7 +84,7 @@ pub(crate) fn render(
         .sig
         .inputs
         .iter()
-        .filter(|a| futures_args.contains(&(*a as *const FnArg)))
+        .filter(|a| await_args.contains(&(*a as *const FnArg)))
         .map(|a| {
             let ident = a
                 .maybe_ident()

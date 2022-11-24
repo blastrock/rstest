@@ -102,7 +102,7 @@ impl VisitMut for ReplaceFutureAttribute {
 
 #[derive(Default)]
 pub(crate) struct RemoveFutureAttribute {
-    future_args: Vec<*const FnArg>,
+    await_args: Vec<*const FnArg>,
 }
 
 impl RemoveFutureAttribute {
@@ -113,7 +113,7 @@ impl RemoveFutureAttribute {
     pub(crate) fn replace_sig(sig: &mut Signature) -> Vec<*const FnArg> {
         let mut visitor = Self::default();
         visitor.visit_signature_mut(sig);
-        visitor.future_args
+        visitor.await_args
     }
 }
 
@@ -126,7 +126,7 @@ impl VisitMut for RemoveFutureAttribute {
                     return;
                 }
 
-                self.future_args.push(node as *const FnArg);
+                self.await_args.push(node as *const FnArg);
             }
             FnArg::Receiver(_) => {}
         }

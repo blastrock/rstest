@@ -14,10 +14,10 @@ pub(crate) fn resolve_aruments<'a>(
     args: impl Iterator<Item = &'a FnArg>,
     resolver: &impl Resolver,
     generic_types: &[Ident],
-    future_args: &[*const FnArg],
+    await_args: &[*const FnArg],
 ) -> TokenStream {
     let define_vars =
-        args.map(|arg| ArgumentResolver::new(resolver, generic_types, future_args).resolve(arg));
+        args.map(|arg| ArgumentResolver::new(resolver, generic_types, await_args).resolve(arg));
     quote! {
         #(#define_vars)*
     }
@@ -30,7 +30,7 @@ where
     resolver: &'resolver R,
     generic_types_names: &'idents [Ident],
     magic_conversion: &'f dyn Fn(Cow<Expr>, &Type) -> Expr,
-    future_args: &'fargs [*const FnArg],
+    await_args: &'fargs [*const FnArg],
 }
 
 impl<'resolver, 'idents, 'f, 'fargs, R> ArgumentResolver<'resolver, 'idents, 'f, 'fargs, R>
@@ -40,13 +40,13 @@ where
     fn new(
         resolver: &'resolver R,
         generic_types_names: &'idents [Ident],
-        future_args: &'fargs [*const FnArg],
+        await_args: &'fargs [*const FnArg],
     ) -> Self {
         Self {
             resolver,
             generic_types_names,
             magic_conversion: &handling_magic_conversion_code,
-            future_args: future_args,
+            await_args: await_args,
         }
     }
 
@@ -69,7 +69,7 @@ where
             fixture = Cow::Owned((self.magic_conversion)(fixture, arg_type));
         }
 
-        if self.future_args.contains(&(arg as *const FnArg)) {
+        if self.await_args.contains(&(arg as *const FnArg)) {
             fixture = Cow::Owned(parse_quote! { #fixture .await })
         }
 
@@ -211,7 +211,7 @@ mod should {
             resolver: &resolver,
             generic_types_names: &generics,
             magic_conversion: &_mock_conversion_code,
-            future_args: &[],
+            await_args: &[],
         };
 
         let injected = ag.resolve(&arg).unwrap();

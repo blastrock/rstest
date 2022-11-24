@@ -317,7 +317,7 @@ pub fn fixture(
     let extend_result = info.extend_with_function_attrs(&mut fixture);
     let mut sig_with_future_impls = fixture.sig.clone();
     let replace_result = ReplaceFutureAttribute::replace(&mut sig_with_future_impls);
-    let futures_args = RemoveFutureAttribute::replace(&mut fixture);
+    let await_args = RemoveFutureAttribute::replace(&mut fixture);
 
     let mut errors = error::fixture(&fixture, &info);
 
@@ -329,7 +329,7 @@ pub fn fixture(
     }
 
     if errors.is_empty() {
-        render::fixture(fixture, sig_with_future_impls, futures_args, info)
+        render::fixture(fixture, sig_with_future_impls, await_args, info)
     } else {
         errors
     }
@@ -1035,7 +1035,7 @@ pub fn rstest(
     let extend_result = info.extend_with_function_attrs(&mut test);
     let mut sig_with_future_impls = test.sig.clone();
     let replace_result = ReplaceFutureAttribute::replace(&mut sig_with_future_impls);
-    let futures_args = RemoveFutureAttribute::replace(&mut test);
+    let await_args = RemoveFutureAttribute::replace(&mut test);
 
     let mut errors = error::rstest(&test, &info);
 
@@ -1048,11 +1048,11 @@ pub fn rstest(
 
     if errors.is_empty() {
         if info.data.has_list_values() {
-            render::matrix(test, futures_args, info)
+            render::matrix(test, await_args, info)
         } else if info.data.has_cases() {
-            render::parametrize(test, futures_args, info)
+            render::parametrize(test, await_args, info)
         } else {
-            render::single(test, futures_args, info)
+            render::single(test, await_args, info)
         }
     } else {
         errors
