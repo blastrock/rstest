@@ -461,7 +461,12 @@ mod cases {
             .fail("my_async_test::case_2_fail")
             .ok("my_async_test::case_3_pass_panic")
             .fail("my_async_test::case_4_fail_panic")
+            .ok("my_async_test_await::case_1_pass")
+            .fail("my_async_test_await::case_2_fail")
+            .ok("my_async_test_await::case_3_pass_panic")
+            .fail("my_async_test_await::case_4_fail_panic")
             .ok("my_async_test_revert::case_1_pass")
+            .ok("my_async_test_revert_await::case_1_pass")
             .assert(output);
     }
 
@@ -781,6 +786,10 @@ mod matrix {
             .fail("my_async_test::first_1")
             .fail("my_async_test::first_2")
             .ok("my_async_test::first_2")
+            .ok("my_async_test_await::first_1")
+            .fail("my_async_test_await::first_1")
+            .fail("my_async_test_await::first_2")
+            .ok("my_async_test_await::first_2")
             .assert(output);
     }
 

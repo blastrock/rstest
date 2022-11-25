@@ -17,8 +17,8 @@ mod utils;
 
 use syn::{parse_macro_input, ItemFn};
 
-use crate::parse::{fixture::FixtureInfo, future::ReplaceFutureAttribute, rstest::RsTestInfo};
-use parse::ExtendWithFunctionAttrs;
+use crate::parse::{fixture::FixtureInfo, rstest::RsTestInfo};
+use parse::{future::ReplaceFutureAttribute, ExtendWithFunctionAttrs};
 use quote::ToTokens;
 
 /// Define a fixture that you can use in all `rstest`'s test arguments. You should just mark your
@@ -476,7 +476,7 @@ pub fn fixture(
 ///
 /// ```
 /// use rstest::rstest;
-///  
+///
 /// fn sum(a: usize, b: usize) -> usize { a + b }
 ///
 /// #[rstest]
