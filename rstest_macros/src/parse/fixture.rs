@@ -3,13 +3,13 @@ use syn::{
     parse::{Parse, ParseStream},
     parse_quote,
     visit_mut::VisitMut,
-    Expr, FnArg, Ident, ItemFn, Token,
+    Expr, FnArg, Ident, ItemFn, Signature, Token,
 };
 
 use super::{
-    extract_argument_attrs, extract_default_return_type, extract_defaults, extract_fixtures,
-    extract_partials_return_type, parse_vector_trailing_till_double_comma, Attributes,
-    ExtendWithFunctionAttrs, Fixture,
+    extract_argument_attrs, extract_awaits, extract_default_return_type, extract_defaults,
+    extract_fixtures, extract_partials_return_type, parse_vector_trailing_till_double_comma,
+    Attributes, ExtendWithFunctionAttrs, Fixture,
 };
 use crate::{
     error::ErrorsVec,
@@ -21,10 +21,23 @@ use crate::{parse::Attribute, utils::attr_in};
 use proc_macro2::TokenStream;
 use quote::{format_ident, ToTokens};
 
-#[derive(PartialEq, Debug, Default)]
+#[derive(PartialEq, Debug)]
 pub(crate) struct FixtureInfo {
     pub(crate) data: FixtureData,
     pub(crate) attributes: FixtureModifiers,
+    pub(crate) signature_with_future_impls: Signature,
+    pub(crate) await_args: Vec<Ident>,
+}
+
+impl Default for FixtureInfo {
+    fn default() -> Self {
+        Self {
+            data: Default::default(),
+            attributes: Default::default(),
+            signature_with_future_impls: parse_quote! { fn f() },
+            await_args: Default::default(),
+        }
+    }
 }
 
 impl Parse for FixtureModifiers {
@@ -44,6 +57,7 @@ impl Parse for FixtureInfo {
                     .parse::<Token![::]>()
                     .or_else(|_| Ok(Default::default()))
                     .and_then(|_| input.parse())?,
+                ..Default::default()
             }
         })
     }
@@ -59,13 +73,16 @@ impl ExtendWithFunctionAttrs for FixtureInfo {
             defaults,
             default_return_type,
             partials_return_type,
-            once
+            once,
+            awaits
         ) = merge_errors!(
             extract_fixtures(item_fn),
             extract_defaults(item_fn),
             extract_default_return_type(item_fn),
             extract_partials_return_type(item_fn),
-            extract_once(item_fn)
+            extract_once(item_fn),
+            // Keep this last so that it works on the final signature, without attributes
+            extract_awaits(item_fn)
         )?;
         self.data.items.extend(
             fixtures
@@ -73,6 +90,8 @@ impl ExtendWithFunctionAttrs for FixtureInfo {
                 .map(|f| f.into())
                 .chain(defaults.into_iter().map(|d| d.into())),
         );
+        self.signature_with_future_impls = awaits.signature_with_future_impls;
+        self.await_args = awaits.await_args;
         if let Some(return_type) = default_return_type {
             self.attributes.set_default_return_type(return_type);
         }
@@ -352,6 +371,8 @@ mod should {
                     ],
                 }
                 .into(),
+                signature_with_future_impls: parse_quote! {fn f()},
+                await_args: vec![],
             };
 
             assert_eq!(expected, data);
@@ -438,6 +459,7 @@ mod extend {
                     fixture("f2", &["vec![1,2]", r#""s""#]).into(),
                 ]
                 .into(),
+                signature_with_future_impls: item_fn.sig.clone(),
                 ..Default::default()
             };
 
@@ -447,10 +469,10 @@ mod extend {
 
         #[test]
         fn rename_with_attributes() {
-            let mut item_fn = r#"
+            let mut item_fn: ItemFn = r#"
                     fn test_fn(
-                        #[from(long_fixture_name)] 
-                        #[with(42, "other")] short: u32, 
+                        #[from(long_fixture_name)]
+                        #[with(42, "other")] short: u32,
                         #[from(simple)]
                         s: &str,
                         no_change: i32) {
@@ -458,7 +480,7 @@ mod extend {
                     "#
             .ast();
 
-            let expected = FixtureInfo {
+            let mut expected = FixtureInfo {
                 data: vec![
                     fixture("short", &["42", r#""other""#])
                         .with_resolve("long_fixture_name")
@@ -471,6 +493,8 @@ mod extend {
 
             let mut data = FixtureInfo::default();
             data.extend_with_function_attrs(&mut item_fn).unwrap();
+
+            expected.signature_with_future_impls = item_fn.sig.clone();
 
             assert_eq!(expected, data);
         }
@@ -492,6 +516,7 @@ mod extend {
                     arg_value("f2", r#"(vec![1,2], "s")"#).into(),
                 ]
                 .into(),
+                signature_with_future_impls: item_fn.sig.clone(),
                 ..Default::default()
             };
 

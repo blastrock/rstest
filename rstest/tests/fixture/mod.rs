@@ -103,13 +103,21 @@ mod should {
         TestResults::new()
             .ok("default_is_async")
             .ok("use_async_fixture")
+            .ok("use_async_fixture_await")
             .ok("use_async_impl_output")
+            .ok("use_async_impl_output_await")
             .ok("use_async_nest_fixture_default")
+            .ok("use_async_nest_fixture_default_await")
             .ok("use_async_nest_fixture_injected")
+            .ok("use_async_nest_fixture_injected_await")
             .ok("use_async_nest_fixture_with_default")
+            .ok("use_async_nest_fixture_with_default_await")
             .ok("use_two_args_mix_fixture")
+            .ok("use_two_args_mix_fixture_await")
             .ok("use_two_args_mix_fixture_inject_first")
+            .ok("use_two_args_mix_fixture_inject_first_await")
             .ok("use_two_args_mix_fixture_inject_both")
+            .ok("use_two_args_mix_fixture_inject_both_await")
             .assert(output);
     }
 

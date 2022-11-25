@@ -14,31 +14,39 @@ pub(crate) fn resolve_aruments<'a>(
     args: impl Iterator<Item = &'a FnArg>,
     resolver: &impl Resolver,
     generic_types: &[Ident],
+    await_args: &[Ident],
 ) -> TokenStream {
-    let define_vars = args.map(|arg| ArgumentResolver::new(resolver, generic_types).resolve(arg));
+    let define_vars =
+        args.map(|arg| ArgumentResolver::new(resolver, generic_types, await_args).resolve(arg));
     quote! {
         #(#define_vars)*
     }
 }
 
-struct ArgumentResolver<'resolver, 'idents, 'f, R>
+struct ArgumentResolver<'resolver, 'idents, 'f, 'fargs, R>
 where
     R: Resolver + 'resolver,
 {
     resolver: &'resolver R,
     generic_types_names: &'idents [Ident],
     magic_conversion: &'f dyn Fn(Cow<Expr>, &Type) -> Expr,
+    await_args: &'fargs [Ident],
 }
 
-impl<'resolver, 'idents, 'f, R> ArgumentResolver<'resolver, 'idents, 'f, R>
+impl<'resolver, 'idents, 'f, 'fargs, R> ArgumentResolver<'resolver, 'idents, 'f, 'fargs, R>
 where
     R: Resolver + 'resolver,
 {
-    fn new(resolver: &'resolver R, generic_types_names: &'idents [Ident]) -> Self {
+    fn new(
+        resolver: &'resolver R,
+        generic_types_names: &'idents [Ident],
+        await_args: &'fargs [Ident],
+    ) -> Self {
         Self {
             resolver,
             generic_types_names,
             magic_conversion: &handling_magic_conversion_code,
+            await_args: await_args,
         }
     }
 
@@ -60,6 +68,15 @@ where
         if fixture.is_literal() && self.type_can_be_get_from_literal_str(arg_type) {
             fixture = Cow::Owned((self.magic_conversion)(fixture, arg_type));
         }
+
+        if arg
+            .maybe_ident()
+            .map(|i| self.await_args.contains(i))
+            .unwrap_or(false)
+        {
+            fixture = Cow::Owned(parse_quote! { #fixture .await })
+        }
+
         Some(parse_quote! {
             #unused_mut
             let #mutability #ident = #fixture;
@@ -129,7 +146,7 @@ mod should {
     fn call_fixture(#[case] arg_str: &str, #[case] expected: &str) {
         let arg = arg_str.ast();
 
-        let injected = ArgumentResolver::new(&EmptyResolver {}, &[])
+        let injected = ArgumentResolver::new(&EmptyResolver {}, &[], &[])
             .resolve(&arg)
             .unwrap();
 
@@ -150,7 +167,9 @@ mod should {
         let mut resolver = std::collections::HashMap::new();
         resolver.insert(rule.0.to_owned(), &rule.1);
 
-        let injected = ArgumentResolver::new(&resolver, &[]).resolve(&arg).unwrap();
+        let injected = ArgumentResolver::new(&resolver, &[], &[])
+            .resolve(&arg)
+            .unwrap();
 
         assert_eq!(injected, expected.ast());
     }
@@ -196,10 +215,16 @@ mod should {
             resolver: &resolver,
             generic_types_names: &generics,
             magic_conversion: &_mock_conversion_code,
+            await_args: &[],
         };
 
         let injected = ag.resolve(&arg).unwrap();
 
         assert_eq!(injected, expected.ast());
+    }
+
+    #[rstest]
+    fn todo_test_future_args() {
+        todo!();
     }
 }

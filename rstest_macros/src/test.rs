@@ -6,10 +6,10 @@
 use std::borrow::Cow;
 use std::iter::FromIterator;
 
-pub(crate) use rstest::{fixture, rstest};
 pub(crate) use pretty_assertions::assert_eq;
 use proc_macro2::TokenTree;
 use quote::quote;
+pub(crate) use rstest::{fixture, rstest};
 use syn::{parse::Parse, parse2, parse_str, Error, Expr, Ident, ItemFn, Stmt};
 
 use super::*;
@@ -123,7 +123,7 @@ pub(crate) fn expr(s: impl AsRef<str>) -> syn::Expr {
 pub(crate) fn attrs(s: impl AsRef<str>) -> Vec<syn::Attribute> {
     parse_str::<ItemFn>(&format!(
         r#"{}
-           fn _no_name_() {{}}   
+           fn _no_name_() {{}}
         "#,
         s.as_ref()
     ))
@@ -258,6 +258,7 @@ impl From<RsTestData> for RsTestInfo {
         Self {
             data,
             attributes: Default::default(),
+            await_args: Default::default(),
         }
     }
 }
