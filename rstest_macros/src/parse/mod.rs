@@ -5,7 +5,7 @@ use syn::{
     punctuated::Punctuated,
     token::{self, Async, Paren},
     visit_mut::VisitMut,
-    FnArg, Ident, ItemFn, Token,
+    FnArg, Ident, ItemFn, Signature, Token,
 };
 
 use crate::{
@@ -19,7 +19,11 @@ use fixture::{
 use quote::ToTokens;
 use testcase::TestCase;
 
-use self::{expressions::Expressions, vlist::ValueList};
+use self::{
+    expressions::Expressions,
+    future::{RemoveAwaitAttribute, ReplaceAwaitAttribute},
+    vlist::ValueList,
+};
 
 // To use the macros this should be the first one module
 #[macro_use]
@@ -206,6 +210,22 @@ pub(crate) fn extract_defaults(item_fn: &mut ItemFn) -> Result<Vec<ArgumentValue
     } else {
         Err(defaults_extractor.1.into())
     }
+}
+
+pub(crate) struct AwaitsExtractionResult {
+    signature_with_future_impls: Signature,
+    await_args: Vec<*const FnArg>,
+}
+
+pub(crate) fn extract_awaits(item_fn: &mut ItemFn) -> Result<AwaitsExtractionResult, ErrorsVec> {
+    let mut signature_with_future_impls = item_fn.sig.clone();
+    ReplaceAwaitAttribute::replace(&mut signature_with_future_impls)?;
+    let await_args = RemoveAwaitAttribute::replace(item_fn);
+
+    Ok(AwaitsExtractionResult {
+        signature_with_future_impls,
+        await_args,
+    })
 }
 
 pub(crate) fn extract_default_return_type(

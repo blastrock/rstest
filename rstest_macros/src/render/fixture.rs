@@ -1,9 +1,10 @@
 use proc_macro2::{Span, TokenStream};
-use syn::{parse_quote, Ident, ItemFn, ReturnType};
+use syn::{parse_quote, FnArg, Ident, ItemFn, ReturnType};
 
 use quote::quote;
 
 use super::{inject, render_exec_call};
+use crate::refident::MaybeIdent;
 use crate::resolver::{self, Resolver};
 use crate::utils::{fn_args, fn_args_idents};
 use crate::{parse::fixture::FixtureInfo, utils::generics_clean_up};
@@ -37,7 +38,7 @@ pub(crate) fn render(fixture: ItemFn, info: FixtureInfo) -> TokenStream {
     let asyncness = &fixture.sig.asyncness.clone();
     let vargs = fn_args_idents(&fixture).cloned().collect::<Vec<_>>();
     let args = &vargs;
-    let orig_args = &fixture.sig.inputs;
+    let orig_args = &info.signature_with_future_impls.inputs;
     let orig_attrs = &fixture.attrs;
     let generics = &fixture.sig.generics;
     let mut default_output = info
@@ -59,7 +60,9 @@ pub(crate) fn render(fixture: ItemFn, info: FixtureInfo) -> TokenStream {
         .map(|tp| &tp.ident)
         .cloned()
         .collect::<Vec<_>>();
-    let inject = inject::resolve_aruments(fixture.sig.inputs.iter(), &resolver, &generics_idents);
+    // Don't await futures in this inject, we will await them in the get() function
+    let inject =
+        inject::resolve_aruments(fixture.sig.inputs.iter(), &resolver, &generics_idents, &[]);
     let partials =
         (1..=orig_args.len()).map(|n| render_partial_impl(&fixture, n, &resolver, &info));
 
@@ -72,6 +75,20 @@ pub(crate) fn render(fixture: ItemFn, info: FixtureInfo) -> TokenStream {
         default_output = wrap_return_type_as_static_ref(default_output);
     }
 
+    let awaits = fixture
+        .sig
+        .inputs
+        .iter()
+        .filter(|a| info.await_args.contains(&(*a as *const FnArg)))
+        .map(|a| {
+            let ident = a
+                .maybe_ident()
+                .expect("Found a future argument without ident");
+            quote! {
+                let #ident = #ident.await;
+            }
+        });
+
     quote! {
         #[allow(non_camel_case_types)]
         #visibility struct #name {}
@@ -80,6 +97,7 @@ pub(crate) fn render(fixture: ItemFn, info: FixtureInfo) -> TokenStream {
             #(#orig_attrs)*
             #[allow(unused_mut)]
             #asyncness fn get #generics (#orig_args) #output #where_clause {
+                #(#awaits)*
                 #call_impl
             }
 
@@ -105,25 +123,34 @@ fn render_partial_impl(
     let mut output = info
         .attributes
         .extract_partial_type(n)
-        .unwrap_or_else(|| fixture.sig.output.clone());
+        .unwrap_or_else(|| info.signature_with_future_impls.output.clone());
 
     if info.attributes.is_once() {
         output = wrap_return_type_as_static_ref(output);
     }
 
-    let generics = generics_clean_up(&fixture.sig.generics, fn_args(fixture).take(n), &output);
+    let generics = generics_clean_up(
+        &info.signature_with_future_impls.generics,
+        fn_args(fixture).take(n),
+        &output,
+    );
     let where_clause = &generics.where_clause;
-    let asyncness = &fixture.sig.asyncness;
+    let asyncness = &info.signature_with_future_impls.asyncness;
 
     let genercs_idents = generics
         .type_params()
         .map(|tp| &tp.ident)
         .cloned()
         .collect::<Vec<_>>();
-    let inject =
-        inject::resolve_aruments(fixture.sig.inputs.iter().skip(n), resolver, &genercs_idents);
+    // Don't await futures in this inject, we will await them in the get() function
+    let inject = inject::resolve_aruments(
+        info.signature_with_future_impls.inputs.iter().skip(n),
+        resolver,
+        &genercs_idents,
+        &[],
+    );
 
-    let sign_args = fn_args(fixture).take(n);
+    let sign_args = info.signature_with_future_impls.inputs.iter().take(n);
     let fixture_args = fn_args_idents(fixture).cloned().collect::<Vec<_>>();
     let name = Ident::new(&format!("partial_{}", n), Span::call_site());
 
@@ -229,7 +256,7 @@ mod should {
         let item_fn = parse_str::<ItemFn>(r#"
                 pub fn test<R: AsRef<str>, B>(mut s: String, v: &u32, a: &mut [i32], r: R) -> (u32, B, String, &str)
                             where B: Borrow<u32>
-                    { }    
+                    { }
         "#).unwrap();
         let info = FixtureInfo::default().with_once();
 
@@ -342,6 +369,7 @@ mod should {
                     )],
                 }
                 .into(),
+                signature_with_future_impls: item_fn.sig.clone(),
                 ..Default::default()
             },
         );
@@ -466,6 +494,7 @@ mod should {
                     )],
                 }
                 .into(),
+                signature_with_future_impls: item_fn.sig.clone(),
                 ..Default::default()
             },
         );
@@ -482,5 +511,10 @@ mod should {
         let partial = select_method(out.core_impl, "partial_1").unwrap();
 
         assert_eq!(expected.sig, partial.sig);
+    }
+
+    #[rstest]
+    fn todo_test_future_args() {
+        todo!();
     }
 }
